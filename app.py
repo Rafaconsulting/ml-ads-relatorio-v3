@@ -88,21 +88,33 @@ def format_panel_geral_br(df: pd.DataFrame) -> pd.DataFrame:
     df_fmt = df.copy()
 
     for col in df_fmt.columns:
-        serie = pd.to_numeric(df_fmt[col], errors="coerce")
+        # tenta converter para numero
+        serie_num = pd.to_numeric(df_fmt[col], errors="coerce")
 
+        # se a coluna for majoritariamente texto, preserva original
+        non_null = df_fmt[col].notna().sum()
+        num_ok = serie_num.notna().sum()
+
+        # regra: se menos de 60% das celulas nao-nulas virarem numero, trata como texto
+        if non_null > 0 and (num_ok / non_null) < 0.60:
+            df_fmt[col] = df_fmt[col].astype(str).replace({"nan": ""})
+            continue
+
+        # aqui, tratamos como numerica
         if _is_money_col(col):
-            df_fmt[col] = serie.map(fmt_money_br)
+            df_fmt[col] = serie_num.map(fmt_money_br)
 
         elif _is_percent_col(col):
-            vmax = serie.max(skipna=True)
+            vmax = serie_num.max(skipna=True)
             if pd.notna(vmax) and vmax <= 2:
-                serie = serie * 100
-            df_fmt[col] = serie.map(fmt_percent_br)
+                serie_num = serie_num * 100
+            df_fmt[col] = serie_num.map(fmt_percent_br)
 
         else:
-            df_fmt[col] = serie.map(lambda x: fmt_number_br(x, 2))
+            df_fmt[col] = serie_num.map(lambda x: fmt_number_br(x, 2))
 
     return df_fmt
+
 
 
 # -------------------------
