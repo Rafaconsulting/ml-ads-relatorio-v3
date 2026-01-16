@@ -50,10 +50,13 @@ def _is_percent_col(col_name: str) -> bool:
 
 def show_df(df, **kwargs):
     """Mostra dataframe no Streamlit com padrao de exibicao:
-    - Colunas de dinheiro com prefixo R$ e 2 casas.
-    - Colunas percentuais (ACOS, CPI, Conversao) com % e 2 casas.
-    Sem alterar os dados originais e evitando Styler em tabelas grandes.
+    - Dinheiro: R$ e 2 casas
+    - Percentuais: % e 2 casas (ACOS, CPI, Con_Visitas_Vendas)
+    Sem alterar os dados originais e evitando travar o app.
     """
+    # Evita conflito se quem chamou ja mandou column_config
+    kwargs.pop("column_config", None)
+
     _st_dataframe = st.dataframe
 
     # Se ja for um Styler, nao mexe
@@ -94,27 +97,37 @@ def show_df(df, **kwargs):
     if not money_cols and not percent_cols:
         return _st_dataframe(_df, **kwargs)
 
-    # Preferencia: column_config (mais leve e estavel)
-    try:
-        col_config = {}
-        for c in money_cols:
-            col_config[c] = st.column_config.NumberColumn(format="R$ %.2f")
-        for c in percent_cols:
-            col_config[c] = st.column_config.NumberColumn(format="%.2f%%")
-        return _st_dataframe(_df, column_config=col_config, **kwargs)
-    except Exception:
-        # Fallback: Styler so para tabelas menores
-        if _df.shape[0] <= 1500 and _df.shape[1] <= 40:
+    # Limites para nao pesar a renderizacao
+    n_rows, n_cols = _df.shape
+    n_special = len(money_cols) + len(percent_cols)
+
+    # Preferencia: column_config (mais leve), mas so em tabelas razoaveis
+    if n_rows <= 5000 and n_cols <= 60 and n_special <= 30:
+        try:
+            col_config = {}
+            for c in money_cols:
+                col_config[c] = st.column_config.NumberColumn(format="R$ %.2f")
+            for c in percent_cols:
+                col_config[c] = st.column_config.NumberColumn(format="%.2f%%")
+            return _st_dataframe(_df, column_config=col_config, **kwargs)
+        except Exception:
+            pass
+
+    # Fallback: Styler so para tabelas menores
+    if n_rows <= 1500 and n_cols <= 40:
+        try:
             fmt = {c: "R$ {:,.2f}" for c in money_cols}
             fmt.update({c: "{:.2f}%" for c in percent_cols})
             return _st_dataframe(_df.style.format(fmt), **kwargs)
+        except Exception:
+            pass
 
-        # Fallback final: converte so as colunas especiais para string (leve)
-        for c in money_cols:
-            _df[c] = pd.to_numeric(_df[c], errors="coerce")
-            _df[c] = _df[c].map(lambda x: "" if pd.isna(x) else f"R$ {x:,.2f}")
-        for c in percent_cols:
-            _df[c] = pd.to_numeric(_df[c], errors="coerce")
-            _df[c] = _df[c].map(lambda x: "" if pd.isna(x) else f"{x:.2f}%")
-        return _st_dataframe(_df, **kwargs)
+    # Fallback final: converte so as colunas especiais para string (leve)
+    for c in money_cols:
+        _df[c] = pd.to_numeric(_df[c], errors="coerce")
+        _df[c] = _df[c].map(lambda x: "" if pd.isna(x) else f"R$ {x:,.2f}")
+    for c in percent_cols:
+        _df[c] = pd.to_numeric(_df[c], errors="coerce")
+        _df[c] = _df[c].map(lambda x: "" if pd.isna(x) else f"{x:.2f}%")
+    return _st_dataframe(_df, **kwargs)
 
