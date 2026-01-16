@@ -85,12 +85,9 @@ with tab1:
     e.metric("Campanhas unicas", kpis["Campanhas únicas"])
     f.metric("IDs patrocinados", kpis["IDs patrocinados únicos"])
 
-    # TACOS: % do faturamento total da conta investido em Ads
-    if "TACOS" in kpis:
-        st.caption(
-            f"TACOS (Investimento Ads / Faturamento total da conta): **{(kpis['TACOS']*100):.2f}%** | "
-            f"Faturamento base (relatorio de desempenho): R$ {kpis.get('Receita Total Conta (R$)', 0.0):.2f}"
-        )
+    # KPI extra sem alterar o layout principal (mantem as 6 colunas acima)
+    t1, t2, t3, t4, t5, t6 = st.columns(6)
+    t1.metric("TACOS", f"{kpis.get('TACOS', 0.0) * 100:.2f}%")
 
     st.divider()
 
