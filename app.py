@@ -111,7 +111,7 @@ with tab1:
 _num_cols = _df_tmp.select_dtypes(include=["number"]).columns
 _df_tmp[_num_cols] = _df_tmp[_num_cols].round(2)
 st.dataframe(_df_tmp, use_container_width=True)
-    with cB:
+with cB:
         st.write("Minas Limitadas (ROAS alto + perda por orcamento)")
         _df_tmp = high["Minas"].copy()
 _num_cols = _df_tmp.select_dtypes(include=["number"]).columns
