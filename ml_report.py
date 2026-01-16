@@ -184,7 +184,7 @@ def add_strategy_fields(
         if q == "ESCALA_ORCAMENTO":
             return f"{EMOJI_GREEN} Aumentar orcamento"
         if q == "COMPETITIVIDADE":
-            return f"{EMOJI_YELLOW} Subir ACOS alvo"
+            return f"{EMOJI_YELLOW} Baixar ROAS objetivo"
         if q == "HEMORRAGIA":
             return f"{EMOJI_RED} Revisar/pausar"
         return f"{EMOJI_BLUE} Manter"
