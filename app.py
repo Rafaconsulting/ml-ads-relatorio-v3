@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import inspect
 from datetime import datetime
 
 import ml_report as ml
@@ -46,8 +45,6 @@ def _is_money_col(col_name: str) -> bool:
     return any(k in c for k in money_keys)
 
 
-# IMPORTANTE:
-# ACOS objetivo vai virar ROAS objetivo, entao nao fica como percentual aqui
 _PERCENT_COLS = {
     "acos real",
     "acos_real",
@@ -73,26 +70,12 @@ def _is_percent_col(col_name: str) -> bool:
     return c in _PERCENT_COLS
 
 
-def _dataframe_accepts_column_config() -> bool:
-    try:
-        sig = inspect.signature(st.dataframe)
-        return "column_config" in sig.parameters
-    except Exception:
-        return False
-
-
 # -------------------------
-# Conversao ACOS objetivo -> ROAS objetivo
+# ACOS objetivo -> ROAS objetivo
 # -------------------------
 def _acos_value_to_roas(ac):
-    """
-    Converte um ACOS objetivo para ROAS objetivo.
-    ACOS pode vir como fracao (0.25) ou percentual (25).
-    ROAS = 1 / ACOS(fracao)
-    """
     if pd.isna(ac):
         return pd.NA
-
     try:
         v = float(ac)
     except Exception:
@@ -101,64 +84,34 @@ def _acos_value_to_roas(ac):
     if v == 0:
         return pd.NA
 
-    acos_frac = v / 100.0 if v > 2 else v
+    acos_frac = v / 100 if v > 2 else v
     if acos_frac <= 0:
         return pd.NA
 
-    return 1.0 / acos_frac
+    return 1 / acos_frac
 
 
 def replace_acos_obj_with_roas_obj(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Encontra a coluna de ACOS objetivo, substitui os valores por ROAS objetivo
-    e renomeia para "ROAS objetivo".
-    """
     if df is None or not isinstance(df, pd.DataFrame) or df.empty:
         return df
 
     df2 = df.copy()
 
-    candidates = [
-        "ACOS Objetivo",
-        "ACOS objetivo",
-        "ACOS_Objetivo",
-        "ACOS_Objetivo_N",
-        "acos_objetivo_n",
-        "acos objetivo n",
-        "ACOS Objetivo N",
-    ]
-
-    found_col = None
-    for c in df2.columns:
-        if c in candidates:
-            found_col = c
+    for col in df2.columns:
+        lc = str(col).lower()
+        if "acos" in lc and "objetivo" in lc:
+            ser = pd.to_numeric(df2[col], errors="coerce")
+            df2[col] = ser.map(_acos_value_to_roas)
+            df2 = df2.rename(columns={col: "ROAS objetivo"})
             break
 
-    if found_col is None:
-        for c in df2.columns:
-            lc = str(c).strip().lower()
-            if "acos" in lc and "objetivo" in lc:
-                found_col = c
-                break
-
-    if found_col is None:
-        return df2
-
-    ser = pd.to_numeric(df2[found_col], errors="coerce")
-    df2[found_col] = ser.map(_acos_value_to_roas)
-    df2 = df2.rename(columns={found_col: "ROAS objetivo"})
     return df2
 
 
 # -------------------------
-# Formatacao exclusiva do Painel Geral
+# Painel geral formatado
 # -------------------------
 def format_panel_geral_br(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Painel geral:
-    - preserva colunas de texto (Nome, Acao_recomendada, etc)
-    - formata numeros com virgula e 2 casas
-    """
     df_fmt = df.copy()
 
     for col in df_fmt.columns:
@@ -166,12 +119,10 @@ def format_panel_geral_br(df: pd.DataFrame) -> pd.DataFrame:
         non_null = df_fmt[col].notna().sum()
         num_ok = serie_num.notna().sum()
 
-        # se for majoritariamente texto, preserva
         if non_null > 0 and (num_ok / non_null) < 0.60:
             df_fmt[col] = df_fmt[col].astype(str).replace({"nan": ""})
             continue
 
-        # numerica
         if _is_money_col(col):
             df_fmt[col] = serie_num.map(fmt_money_br)
         elif _is_percent_col(col):
@@ -186,54 +137,21 @@ def format_panel_geral_br(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # -------------------------
-# Exibicao padronizada (geral)
+# Exibição padrão
 # -------------------------
 def show_df(df, **kwargs):
-    kwargs.pop("column_config", None)
-
-    if df is None:
-        st.info("Sem dados para exibir.")
-        return
-
-    if not isinstance(df, pd.DataFrame) or df.empty:
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
         st.dataframe(df, **kwargs)
         return
 
     _df = df.copy()
 
-    money_cols = [c for c in _df.columns if _is_money_col(c)]
-    percent_cols = [c for c in _df.columns if _is_percent_col(c)]
-
-    # percentuais: garante escala correta
-    for c in percent_cols:
-        ser = pd.to_numeric(_df[c], errors="coerce")
-        vmax = ser.max(skipna=True)
-        if pd.notna(vmax) and vmax <= 2:
-            _df[c] = ser * 100
-        else:
-            _df[c] = ser
-
-    n_rows, n_cols = _df.shape
-
-    # Styler BR para tabelas menores
-    if n_rows <= 1500 and n_cols <= 50:
-        fmt = {}
-        for c in money_cols:
-            fmt[c] = fmt_money_br
-        for c in percent_cols:
-            fmt[c] = fmt_percent_br
-
-        try:
-            st.dataframe(_df.style.format(fmt), **kwargs)
-            return
-        except Exception:
-            pass
-
-    # Fallback: converte so colunas especiais
-    for c in money_cols:
-        _df[c] = pd.to_numeric(_df[c], errors="coerce").map(fmt_money_br)
-    for c in percent_cols:
-        _df[c] = pd.to_numeric(_df[c], errors="coerce").map(fmt_percent_br)
+    for col in _df.columns:
+        if _is_percent_col(col):
+            ser = pd.to_numeric(_df[col], errors="coerce")
+            vmax = ser.max(skipna=True)
+            if pd.notna(vmax) and vmax <= 2:
+                _df[col] = ser * 100
 
     st.dataframe(_df, **kwargs)
 
@@ -250,18 +168,22 @@ def main():
         st.divider()
 
         st.subheader("Arquivos")
-        organico_file = st.file_uploader("Relatório de Desempenho de Vendas (Excel)", type=["xlsx"])
-        patrocinados_file = st.file_uploader("Relatório Anúncios Patrocinados (Excel)", type=["xlsx"])
-        campanhas_file = st.file_uploader("Relatório de Campanha (Excel)", type=["xlsx"])
-
-        st.divider()
-        st.subheader("Modo Campanhas")
-        modo = st.radio("Como ler o relatório de campanha", ["diario", "consolidado"], horizontal=True)
+        organico_file = st.file_uploader(
+            "Relatório de Desempenho de Vendas (Excel)", type=["xlsx"]
+        )
+        patrocinados_file = st.file_uploader(
+            "Relatório Anúncios Patrocinados (Excel)", type=["xlsx"]
+        )
+        campanhas_file = st.file_uploader(
+            "Relatório de Campanha (Excel)", type=["xlsx"]
+        )
 
         st.divider()
         st.subheader("Filtros de regra")
 
-        enter_visitas_min = st.number_input("Entrar em Ads: visitas mín", min_value=0, value=50, step=10)
+        enter_visitas_min = st.number_input(
+            "Entrar em Ads: visitas mín", min_value=0, value=50, step=10
+        )
 
         enter_conv_min_pct = st.number_input(
             "Entrar em Ads: conversão mín (%)",
@@ -287,7 +209,6 @@ def main():
             format="%.2f",
         )
 
-        # conversao interna
         enter_conv_min = enter_conv_min_pct / 100
         pause_cvr_max = pause_cvr_max_pct / 100
 
@@ -306,14 +227,9 @@ def main():
         org = ml.load_organico(organico_file)
         pat = ml.load_patrocinados(patrocinados_file)
 
-        if modo == "diario":
-            camp_raw = ml.load_campanhas_diario(campanhas_file)
-            daily = ml.build_daily_from_diario(camp_raw)
-            camp_agg = ml.build_campaign_agg(camp_raw, modo="diario")
-        else:
-            camp_raw = ml.load_campanhas_consolidado(campanhas_file)
-            daily = None
-            camp_agg = ml.build_campaign_agg(camp_raw, modo="consolidado")
+        # MODO ÚNICO: CONSOLIDADO
+        camp_raw = ml.load_campanhas_consolidado(campanhas_file)
+        camp_agg = ml.build_campaign_agg(camp_raw, modo="consolidado")
 
         kpis, pause, enter, scale, acos, camp_strat = ml.build_tables(
             org=org,
@@ -338,34 +254,25 @@ def main():
     st.subheader("KPIs")
     cols = st.columns(4)
 
-    cols[0].metric("Investimento Ads", fmt_money_br(float(kpis.get("Investimento Ads (R$)", 0))))
-    cols[1].metric("Receita Ads", fmt_money_br(float(kpis.get("Receita Ads (R$)", 0))))
+    cols[0].metric(
+        "Investimento Ads", fmt_money_br(float(kpis.get("Investimento Ads (R$)", 0)))
+    )
+    cols[1].metric(
+        "Receita Ads", fmt_money_br(float(kpis.get("Receita Ads (R$)", 0)))
+    )
     cols[2].metric("ROAS", fmt_number_br(float(kpis.get("ROAS", 0)), 2))
 
     tacos_val = float(kpis.get("TACOS", 0))
     tacos_pct = tacos_val * 100 if tacos_val <= 2 else tacos_val
     cols[3].metric("TACOS", fmt_percent_br(tacos_pct))
 
-    with st.expander("Ver tabela de KPIs"):
-        show_df(pd.DataFrame([kpis]))
-
     st.divider()
 
     # -------------------------
-    # Série diária
-    # -------------------------
-    if daily is not None:
-        st.subheader("Série diária")
-        show_df(daily)
-
-    # -------------------------
     # Painel geral
-    # IMPORTANTE: aqui o ml_report ainda precisa do camp_strat com "ACOS Objetivo"
     # -------------------------
     st.subheader("Painel geral")
     panel_raw = ml.build_control_panel(camp_strat)
-
-    # agora sim, converte no painel e formata
     panel_raw = replace_acos_obj_with_roas_obj(panel_raw)
     panel_fmt = format_panel_geral_br(panel_raw)
     st.dataframe(panel_fmt, use_container_width=True)
@@ -373,7 +280,7 @@ def main():
     st.divider()
 
     # -------------------------
-    # Views com ROAS objetivo para o resto da tela
+    # Views com ROAS objetivo
     # -------------------------
     camp_strat_view = replace_acos_obj_with_roas_obj(camp_strat)
     pause_view = replace_acos_obj_with_roas_obj(pause)
@@ -381,9 +288,6 @@ def main():
     scale_view = replace_acos_obj_with_roas_obj(scale)
     acos_view = replace_acos_obj_with_roas_obj(acos)
 
-    # -------------------------
-    # Matriz CPI
-    # -------------------------
     st.subheader("Matriz CPI")
     show_df(camp_strat_view, use_container_width=True)
 
@@ -403,33 +307,25 @@ def main():
         st.subheader("Subir ROAS objetivo")
         show_df(acos_view, use_container_width=True)
 
-    # -------------------------
-    # Download Excel
-    # Mantem os dataframes originais para nao quebrar o gerar_excel do ml_report
-    # -------------------------
     st.subheader("Download Excel")
-    try:
-        excel_bytes = ml.gerar_excel(
-            kpis=kpis,
-            camp_agg=camp_agg,
-            pause=pause,
-            enter=enter,
-            scale=scale,
-            acos=acos,
-            camp_strat=camp_strat,
-            daily=daily,
-        )
+    excel_bytes = ml.gerar_excel(
+        kpis=kpis,
+        camp_agg=camp_agg,
+        pause=pause,
+        enter=enter,
+        scale=scale,
+        acos=acos,
+        camp_strat=camp_strat,
+        daily=None,
+    )
 
-        st.download_button(
-            "Baixar Excel do relatório",
-            data=excel_bytes,
-            file_name="relatorio_meli_ads.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-    except Exception as e:
-        st.error("Não consegui gerar o Excel.")
-        st.exception(e)
+    st.download_button(
+        "Baixar Excel do relatório",
+        data=excel_bytes,
+        file_name="relatorio_meli_ads.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
 
 
 if __name__ == "__main__":
