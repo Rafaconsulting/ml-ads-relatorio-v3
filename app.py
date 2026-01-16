@@ -1,17 +1,15 @@
 import streamlit as st
 from datetime import datetime
-import ml_report as ml
+import inspect
+import pandas as pd
 
 
 # --------------------------------------------------------------------
 # Helpers de exibicao
-# Padroniza colunas de dinheiro com prefixo "R$" sem alterar os dados.
+# Padroniza dinheiro com "R$" e percentuais com "%", sem alterar a fonte.
 # --------------------------------------------------------------------
-import pandas as pd
-
 def _is_money_col(col_name: str) -> bool:
     c = str(col_name).strip().lower()
-    # casos comuns no app
     if "receita proj" in c:
         return True
     if "potencial_receita" in c or "potencial receita" in c:
@@ -22,13 +20,11 @@ def _is_money_col(col_name: str) -> bool:
         return True
     if "vendas_brutas" in c or "vendas brutas" in c:
         return True
-    # evita pegar metricas que nao sao dinheiro
     if c == "receita" or c.startswith("receita "):
         return True
     return False
 
 
-# Colunas que devem ser exibidas como percentual (na exibicao).
 _PERCENT_COLS = {
     "acos real",
     "acos_real",
@@ -42,24 +38,30 @@ _PERCENT_COLS = {
     "con visitas vendas",
 }
 
+
 def _is_percent_col(col_name: str) -> bool:
-    c = str(col_name).strip().lower()
-    c = c.replace("__", "_")
+    c = str(col_name).strip().lower().replace("__", "_")
     return c in _PERCENT_COLS
 
 
+def _dataframe_accepts_column_config() -> bool:
+    try:
+        sig = inspect.signature(st.dataframe)
+        return "column_config" in sig.parameters
+    except Exception:
+        return False
+
+
 def show_df(df, **kwargs):
-    """Mostra dataframe no Streamlit com padrao de exibicao:
+    """
+    Exibe dataframe no Streamlit com padrao:
     - Dinheiro: R$ e 2 casas
     - Percentuais: % e 2 casas (ACOS, CPI, Con_Visitas_Vendas)
     Sem alterar os dados originais e evitando travar o app.
     """
-    # Evita conflito se quem chamou ja mandou column_config
     kwargs.pop("column_config", None)
-
     _st_dataframe = st.dataframe
 
-    # Se ja for um Styler, nao mexe
     try:
         from pandas.io.formats.style import Styler
         if isinstance(df, Styler):
@@ -81,8 +83,7 @@ def show_df(df, **kwargs):
     money_cols = [c for c in _df.columns if _is_money_col(c)]
     percent_cols = [c for c in _df.columns if _is_percent_col(c)]
 
-    # Converte percentuais so na exibicao:
-    # Se vier como fracao (0 a 1.x), multiplica por 100.
+    # Se percentuais vierem como fracao (0 a 1.x), converte para 0 a 100 na exibicao
     for c in percent_cols:
         ser = pd.to_numeric(_df[c], errors="coerce")
         try:
@@ -97,12 +98,16 @@ def show_df(df, **kwargs):
     if not money_cols and not percent_cols:
         return _st_dataframe(_df, **kwargs)
 
-    # Limites para nao pesar a renderizacao
     n_rows, n_cols = _df.shape
     n_special = len(money_cols) + len(percent_cols)
 
-    # Preferencia: column_config (mais leve), mas so em tabelas razoaveis
-    if n_rows <= 5000 and n_cols <= 60 and n_special <= 30:
+    # Preferencia: column_config (quando suportado)
+    if (
+        _dataframe_accepts_column_config()
+        and n_rows <= 5000
+        and n_cols <= 60
+        and n_special <= 30
+    ):
         try:
             col_config = {}
             for c in money_cols:
@@ -122,12 +127,81 @@ def show_df(df, **kwargs):
         except Exception:
             pass
 
-    # Fallback final: converte so as colunas especiais para string (leve)
+    # Fallback final: converte somente as colunas especiais para string
     for c in money_cols:
         _df[c] = pd.to_numeric(_df[c], errors="coerce")
         _df[c] = _df[c].map(lambda x: "" if pd.isna(x) else f"R$ {x:,.2f}")
     for c in percent_cols:
         _df[c] = pd.to_numeric(_df[c], errors="coerce")
         _df[c] = _df[c].map(lambda x: "" if pd.isna(x) else f"{x:.2f}%")
+
     return _st_dataframe(_df, **kwargs)
 
+
+# --------------------------------------------------------------------
+# App
+# --------------------------------------------------------------------
+def _call_ml_entrypoint(ml):
+    """
+    Tenta chamar um entrypoint do ml_report sem quebrar o app.
+    Ajuda quando voce nao tem certeza do nome da funcao principal.
+    """
+    candidates = [
+        "main",
+        "run",
+        "app",
+        "render",
+        "render_app",
+        "build_app",
+    ]
+
+    for name in candidates:
+        fn = getattr(ml, name, None)
+        if callable(fn):
+            # tenta passar show_df se a funcao aceitar
+            try:
+                sig = inspect.signature(fn)
+                if "show_df" in sig.parameters:
+                    return fn(show_df=show_df)
+                return fn()
+            except TypeError:
+                # assinatura inesperada, tenta chamada simples
+                try:
+                    return fn()
+                except Exception:
+                    raise
+
+    # Se nao achou nada, informa o usuario e lista o que tem no modulo
+    public = [x for x in dir(ml) if not x.startswith("_")]
+    st.error("Nao encontrei funcao principal no ml_report para iniciar o app.")
+    st.write("Funcoes/objetos disponiveis em ml_report:")
+    st.code("\n".join(public))
+
+
+def main():
+    st.set_page_config(page_title="MelieADs", layout="wide")
+    st.title("Mercado Livre Ads - Dashboard e Relatorio")
+
+    with st.sidebar:
+        st.caption(f"Atualizado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        st.divider()
+        st.write("Se o app travar ao carregar, o erro costuma estar em import circular no ml_report.")
+        st.divider()
+
+    # Import tardio para evitar import circular e travamento na inicializacao
+    try:
+        import ml_report as ml
+    except Exception as e:
+        st.error("Falha ao importar ml_report. Isso normalmente indica import circular ou erro no modulo.")
+        st.exception(e)
+        return
+
+    try:
+        _call_ml_entrypoint(ml)
+    except Exception as e:
+        st.error("O app iniciou, mas houve erro ao executar o ml_report.")
+        st.exception(e)
+
+
+if __name__ == "__main__":
+    main()
