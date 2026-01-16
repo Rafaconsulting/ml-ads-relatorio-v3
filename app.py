@@ -3,18 +3,19 @@ from datetime import datetime
 import ml_report as ml
 
 
-# Formata apenas a exibicao das tabelas (nao altera dados nem o Excel)
-def _fmt_2dec_display(df):
-    df2 = df.copy()
-    num_cols = df2.select_dtypes(include=['number']).columns
-    fmt = {}
-    for c in num_cols:
-        lc = str(c).lower()
-        if any(k in lc for k in ['ctr','cvr','acos','tacos','%']):
-            fmt[c] = '{:.2%}'
-        else:
-            fmt[c] = '{:,.2f}'
-    return df2.style.format(fmt)
+
+def round_numeric_df(df, nd=2):
+    # Arredonda apenas colunas numericas, sem mudar o restante.
+    if df is None:
+        return df
+    d = df.copy()
+    try:
+        num_cols = d.select_dtypes(include=["number"]).columns
+        if len(num_cols) > 0:
+            d[num_cols] = d[num_cols].round(nd)
+    except Exception:
+        return df
+    return d
 
 st.set_page_config(page_title="ML Ads - Dashboard & Relatorio", layout="wide")
 st.title("Mercado Livre Ads - Dashboard e Relatorio Automatico (Estrategico)")
@@ -121,15 +122,15 @@ with tab1:
     cA, cB = st.columns(2)
     with cA:
         st.write("Locomotivas (CPI 80% + perda por classificacao)")
-        st.dataframe(_fmt_2dec_display(high["Locomotivas"]), use_container_width=True)
+        st.dataframe(round_numeric_df(high["Locomotivas"], 2), use_container_width=True)
     with cB:
         st.write("Minas Limitadas (ROAS alto + perda por orcamento)")
-        st.dataframe(_fmt_2dec_display(high["Minas"]), use_container_width=True)
+        st.dataframe(round_numeric_df(high["Minas"], 2), use_container_width=True)
 
     st.divider()
 
     st.subheader("Plano de Acao - 7 dias")
-    st.dataframe(_fmt_2dec_display(plan7), use_container_width=True)
+    st.dataframe(round_numeric_df(plan7, 2), use_container_width=True)
 
     st.divider()
 
@@ -141,10 +142,10 @@ with tab1:
     cC, cD = st.columns(2)
     with cC:
         st.subheader("Campanhas para PAUSAR/REVISAR")
-        st.dataframe(_fmt_2dec_display(pause), use_container_width=True)
+        st.dataframe(round_numeric_df(pause, 2), use_container_width=True)
     with cD:
         st.subheader("Anuncios para ENTRAR em Ads (organico forte)")
-        st.dataframe(_fmt_2dec_display(enter), use_container_width=True)
+        st.dataframe(round_numeric_df(enter, 2), use_container_width=True)
 
 with tab2:
     st.subheader("Gerar relatorio final (Excel)")
