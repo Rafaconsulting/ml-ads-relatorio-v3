@@ -45,6 +45,8 @@ def _is_money_col(col_name: str) -> bool:
     return any(k in c for k in money_keys)
 
 
+# IMPORTANTE
+# Tiramos ACOS objetivo e ACOS_Objetivo_N daqui, porque agora viram ROAS (numero)
 _PERCENT_COLS = {
     "acos real",
     "acos_real",
@@ -71,7 +73,7 @@ def _is_percent_col(col_name: str) -> bool:
 
 
 # -------------------------
-# ACOS objetivo -> ROAS objetivo
+# ACOS objetivo -> ROAS objetivo (inclui ACOS_Objetivo_N)
 # -------------------------
 def _acos_value_to_roas(ac):
     if pd.isna(ac):
@@ -84,6 +86,7 @@ def _acos_value_to_roas(ac):
     if v == 0:
         return pd.NA
 
+    # se vier como percentual (25, 30, 50), converte para fracao
     acos_frac = v / 100 if v > 2 else v
     if acos_frac <= 0:
         return pd.NA
@@ -91,21 +94,38 @@ def _acos_value_to_roas(ac):
     return 1 / acos_frac
 
 
+def _roas_col_name_from_acos_col(col_name: str) -> str:
+    lc = str(col_name).strip().lower().replace("__", "_")
+
+    # identifica variacoes "N"
+    if lc.endswith("_n") or "objetivo_n" in lc or "objetivo n" in lc:
+        return "ROAS objetivo N"
+
+    return "ROAS objetivo"
+
+
 def replace_acos_obj_with_roas_obj(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Converte TODAS as colunas que tenham "acos" e "objetivo":
+    - ACOS Objetivo -> ROAS objetivo
+    - ACOS_Objetivo_N -> ROAS objetivo N
+    Mantem ambas se existirem no dataframe.
+    """
     if df is None or not isinstance(df, pd.DataFrame) or df.empty:
         return df
 
     df2 = df.copy()
+    renames = {}
 
     for col in list(df2.columns):
         lc = str(col).strip().lower()
-
-        # pega qualquer variacao de ACOS objetivo
         if "acos" in lc and "objetivo" in lc:
             ser = pd.to_numeric(df2[col], errors="coerce")
             df2[col] = ser.map(_acos_value_to_roas)
-            df2 = df2.rename(columns={col: "ROAS objetivo"})
-            break  # garante uma coluna unica
+            renames[col] = _roas_col_name_from_acos_col(col)
+
+    if renames:
+        df2 = df2.rename(columns=renames)
 
     return df2
 
@@ -129,7 +149,7 @@ def format_table_br(df: pd.DataFrame) -> pd.DataFrame:
     for col in df_fmt.columns:
         lc = str(col).strip().lower()
 
-        # preserva texto por nome (mais seguro que heuristica)
+        # preserva texto por nome (blindagem)
         if (
             "nome" in lc
             or "campanha" in lc
@@ -147,7 +167,7 @@ def format_table_br(df: pd.DataFrame) -> pd.DataFrame:
         non_null = df_fmt[col].notna().sum()
         num_ok = serie_num.notna().sum()
 
-        # se nao for numerica de verdade, preserva como texto
+        # se nao for numerica, preserva
         if non_null == 0 or (num_ok / max(non_null, 1)) < 0.60:
             df_fmt[col] = df_fmt[col].astype(str).replace({"nan": ""})
             continue
@@ -208,7 +228,12 @@ def main():
         st.divider()
         st.subheader("Filtros de regra")
 
-        enter_visitas_min = st.number_input("Entrar em Ads: visitas mín", min_value=0, value=50, step=10)
+        enter_visitas_min = st.number_input(
+            "Entrar em Ads: visitas mín",
+            min_value=0,
+            value=50,
+            step=10,
+        )
 
         enter_conv_min_pct = st.number_input(
             "Entrar em Ads: conversão mín (%)",
@@ -295,27 +320,27 @@ def main():
     # -------------------------
     st.subheader("Painel geral")
     panel_raw = ml.build_control_panel(camp_strat)
+
+    # converte ACOS objetivo e ACOS_Objetivo_N para ROAS objetivo e ROAS objetivo N
     panel_raw = replace_acos_obj_with_roas_obj(panel_raw)
+
     panel_fmt = format_table_br(panel_raw)
     st.dataframe(panel_fmt, use_container_width=True)
 
     st.divider()
 
     # -------------------------
-    # Matriz CPI com os mesmos ajustes do Painel Geral
+    # Matriz CPI com as mesmas regras do Painel Geral
     # -------------------------
     st.subheader("Matriz CPI")
-
     cpi_raw = replace_acos_obj_with_roas_obj(camp_strat)
     cpi_fmt = format_table_br(cpi_raw)
-
     st.dataframe(cpi_fmt, use_container_width=True)
 
     st.divider()
 
     # -------------------------
     # Outras tabelas (mantem estilo atual, mas com ROAS objetivo)
-    # Se quiser, podemos aplicar format_table_br nelas tambem
     # -------------------------
     pause_view = replace_acos_obj_with_roas_obj(pause)
     enter_view = replace_acos_obj_with_roas_obj(enter)
@@ -338,6 +363,10 @@ def main():
         st.subheader("Subir ROAS objetivo")
         show_df(acos_view, use_container_width=True)
 
+    # -------------------------
+    # Download Excel
+    # Mantem dataframes originais para nao quebrar o gerar_excel do ml_report
+    # -------------------------
     st.subheader("Download Excel")
     excel_bytes = ml.gerar_excel(
         kpis=kpis,
