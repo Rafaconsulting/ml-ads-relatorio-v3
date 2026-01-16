@@ -2,21 +2,6 @@ import streamlit as st
 from datetime import datetime
 import ml_report as ml
 
-
-
-def round_numeric_df(df, nd=2):
-    # Arredonda apenas colunas numericas, sem mudar o restante.
-    if df is None:
-        return df
-    d = df.copy()
-    try:
-        num_cols = d.select_dtypes(include=["number"]).columns
-        if len(num_cols) > 0:
-            d[num_cols] = d[num_cols].round(nd)
-    except Exception:
-        return df
-    return d
-
 st.set_page_config(page_title="ML Ads - Dashboard & Relatorio", layout="wide")
 st.title("Mercado Livre Ads - Dashboard e Relatorio Automatico (Estrategico)")
 
@@ -122,30 +107,48 @@ with tab1:
     cA, cB = st.columns(2)
     with cA:
         st.write("Locomotivas (CPI 80% + perda por classificacao)")
-        st.dataframe(round_numeric_df(high["Locomotivas"], 2), use_container_width=True)
+        _df_tmp = high["Locomotivas"].copy()
+_num_cols = _df_tmp.select_dtypes(include=["number"]).columns
+_df_tmp[_num_cols] = _df_tmp[_num_cols].round(2)
+st.dataframe(_df_tmp, use_container_width=True)
     with cB:
         st.write("Minas Limitadas (ROAS alto + perda por orcamento)")
-        st.dataframe(round_numeric_df(high["Minas"], 2), use_container_width=True)
+        _df_tmp = high["Minas"].copy()
+_num_cols = _df_tmp.select_dtypes(include=["number"]).columns
+_df_tmp[_num_cols] = _df_tmp[_num_cols].round(2)
+st.dataframe(_df_tmp, use_container_width=True)
 
     st.divider()
 
     st.subheader("Plano de Acao - 7 dias")
-    st.dataframe(round_numeric_df(plan7, 2), use_container_width=True)
+    # Formata apenas a exibicao da Matriz de Oportunidade para limitar em 2 casas decimais.
+_matriz_df = plan7.copy()
+_num_cols = _matriz_df.select_dtypes(include=["number"]).columns
 
-    st.divider()
+_fmt_map = {}
+for _c in _num_cols:
+    _lc = str(_c).lower()
+    if "ctr" in _lc or "tacos" in _lc:
+        _fmt_map[_c] = "{:.2%}"
+    else:
+        _fmt_map[_c] = "{:,.2f}"
+
+st.dataframe(_matriz_df.style.format(_fmt_map), use_container_width=True)
+
+st.divider()
 
     st.subheader("Painel de Controle Geral (todas as campanhas)")
     st.dataframe(panel, use_container_width=True)
 
-    st.divider()
+st.divider()
 
     cC, cD = st.columns(2)
     with cC:
         st.subheader("Campanhas para PAUSAR/REVISAR")
-        st.dataframe(round_numeric_df(pause, 2), use_container_width=True)
+        st.dataframe(pause, use_container_width=True)
     with cD:
         st.subheader("Anuncios para ENTRAR em Ads (organico forte)")
-        st.dataframe(round_numeric_df(enter, 2), use_container_width=True)
+        st.dataframe(enter, use_container_width=True)
 
 with tab2:
     st.subheader("Gerar relatorio final (Excel)")
