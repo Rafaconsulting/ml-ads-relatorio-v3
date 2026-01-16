@@ -47,7 +47,7 @@ def _is_money_col(col_name: str) -> bool:
 
 
 # IMPORTANTE:
-# Removi ACOS objetivo daqui, porque ele vai virar ROAS objetivo (numero, nao percentual)
+# ACOS objetivo vai virar ROAS objetivo, entao nao fica como percentual aqui
 _PERCENT_COLS = {
     "acos real",
     "acos_real",
@@ -87,10 +87,8 @@ def _dataframe_accepts_column_config() -> bool:
 def _acos_value_to_roas(ac):
     """
     Converte um ACOS objetivo para ROAS objetivo.
-    Aceita ACOS como:
-      - fracao (0.25)
-      - percentual (25)
-    Retorna ROAS como numero (ex: 4.0).
+    ACOS pode vir como fracao (0.25) ou percentual (25).
+    ROAS = 1 / ACOS(fracao)
     """
     if pd.isna(ac):
         return pd.NA
@@ -103,9 +101,7 @@ def _acos_value_to_roas(ac):
     if v == 0:
         return pd.NA
 
-    # se vier como percentual (25, 30, 50...), converte para fracao
     acos_frac = v / 100.0 if v > 2 else v
-
     if acos_frac <= 0:
         return pd.NA
 
@@ -114,16 +110,14 @@ def _acos_value_to_roas(ac):
 
 def replace_acos_obj_with_roas_obj(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Procura colunas de ACOS objetivo e:
-      - substitui os valores por ROAS objetivo
-      - renomeia a coluna para "ROAS objetivo"
+    Encontra a coluna de ACOS objetivo, substitui os valores por ROAS objetivo
+    e renomeia para "ROAS objetivo".
     """
     if df is None or not isinstance(df, pd.DataFrame) or df.empty:
         return df
 
     df2 = df.copy()
 
-    # candidatos mais comuns, mantendo compatibilidade com o que aparece no seu app
     candidates = [
         "ACOS Objetivo",
         "ACOS objetivo",
@@ -140,7 +134,6 @@ def replace_acos_obj_with_roas_obj(df: pd.DataFrame) -> pd.DataFrame:
             found_col = c
             break
 
-    # fallback: busca por texto parecido
     if found_col is None:
         for c in df2.columns:
             lc = str(c).strip().lower()
@@ -153,10 +146,7 @@ def replace_acos_obj_with_roas_obj(df: pd.DataFrame) -> pd.DataFrame:
 
     ser = pd.to_numeric(df2[found_col], errors="coerce")
     df2[found_col] = ser.map(_acos_value_to_roas)
-
-    # renomeia
     df2 = df2.rename(columns={found_col: "ROAS objetivo"})
-
     return df2
 
 
@@ -164,14 +154,19 @@ def replace_acos_obj_with_roas_obj(df: pd.DataFrame) -> pd.DataFrame:
 # Formatacao exclusiva do Painel Geral
 # -------------------------
 def format_panel_geral_br(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Painel geral:
+    - preserva colunas de texto (Nome, Acao_recomendada, etc)
+    - formata numeros com virgula e 2 casas
+    """
     df_fmt = df.copy()
 
     for col in df_fmt.columns:
-        # preserva texto (ex: Nome da campanha, Acao_recomendada)
         serie_num = pd.to_numeric(df_fmt[col], errors="coerce")
         non_null = df_fmt[col].notna().sum()
         num_ok = serie_num.notna().sum()
 
+        # se for majoritariamente texto, preserva
         if non_null > 0 and (num_ok / non_null) < 0.60:
             df_fmt[col] = df_fmt[col].astype(str).replace({"nan": ""})
             continue
@@ -179,13 +174,11 @@ def format_panel_geral_br(df: pd.DataFrame) -> pd.DataFrame:
         # numerica
         if _is_money_col(col):
             df_fmt[col] = serie_num.map(fmt_money_br)
-
         elif _is_percent_col(col):
             vmax = serie_num.max(skipna=True)
             if pd.notna(vmax) and vmax <= 2:
                 serie_num = serie_num * 100
             df_fmt[col] = serie_num.map(fmt_percent_br)
-
         else:
             df_fmt[col] = serie_num.map(lambda x: fmt_number_br(x, 2))
 
@@ -211,6 +204,7 @@ def show_df(df, **kwargs):
     money_cols = [c for c in _df.columns if _is_money_col(c)]
     percent_cols = [c for c in _df.columns if _is_percent_col(c)]
 
+    # percentuais: garante escala correta
     for c in percent_cols:
         ser = pd.to_numeric(_df[c], errors="coerce")
         vmax = ser.max(skipna=True)
@@ -221,6 +215,7 @@ def show_df(df, **kwargs):
 
     n_rows, n_cols = _df.shape
 
+    # Styler BR para tabelas menores
     if n_rows <= 1500 and n_cols <= 50:
         fmt = {}
         for c in money_cols:
@@ -234,6 +229,7 @@ def show_df(df, **kwargs):
         except Exception:
             pass
 
+    # Fallback: converte so colunas especiais
     for c in money_cols:
         _df[c] = pd.to_numeric(_df[c], errors="coerce").map(fmt_money_br)
     for c in percent_cols:
@@ -264,6 +260,7 @@ def main():
 
         st.divider()
         st.subheader("Filtros de regra")
+
         enter_visitas_min = st.number_input("Entrar em Ads: visitas mín", min_value=0, value=50, step=10)
 
         enter_conv_min_pct = st.number_input(
@@ -290,6 +287,7 @@ def main():
             format="%.2f",
         )
 
+        # conversao interna
         enter_conv_min = enter_conv_min_pct / 100
         pause_cvr_max = pause_cvr_max_pct / 100
 
@@ -327,13 +325,6 @@ def main():
             pause_cvr_max=float(pause_cvr_max),
         )
 
-        # Converte ACOS objetivo -> ROAS objetivo nos dataframes que costumam ter a coluna
-        camp_strat = replace_acos_obj_with_roas_obj(camp_strat)
-        scale = replace_acos_obj_with_roas_obj(scale)
-        acos = replace_acos_obj_with_roas_obj(acos)  # pode existir aqui dependendo do seu ml_report
-        pause = replace_acos_obj_with_roas_obj(pause)
-        enter = replace_acos_obj_with_roas_obj(enter)
-
         st.success("Relatório gerado com sucesso.")
 
     except Exception as e:
@@ -341,7 +332,9 @@ def main():
         st.exception(e)
         return
 
+    # -------------------------
     # KPIs
+    # -------------------------
     st.subheader("KPIs")
     cols = st.columns(4)
 
@@ -358,37 +351,62 @@ def main():
 
     st.divider()
 
+    # -------------------------
+    # Série diária
+    # -------------------------
     if daily is not None:
         st.subheader("Série diária")
         show_df(daily)
 
+    # -------------------------
+    # Painel geral
+    # IMPORTANTE: aqui o ml_report ainda precisa do camp_strat com "ACOS Objetivo"
+    # -------------------------
     st.subheader("Painel geral")
     panel_raw = ml.build_control_panel(camp_strat)
+
+    # agora sim, converte no painel e formata
     panel_raw = replace_acos_obj_with_roas_obj(panel_raw)
     panel_fmt = format_panel_geral_br(panel_raw)
     st.dataframe(panel_fmt, use_container_width=True)
 
     st.divider()
 
+    # -------------------------
+    # Views com ROAS objetivo para o resto da tela
+    # -------------------------
+    camp_strat_view = replace_acos_obj_with_roas_obj(camp_strat)
+    pause_view = replace_acos_obj_with_roas_obj(pause)
+    enter_view = replace_acos_obj_with_roas_obj(enter)
+    scale_view = replace_acos_obj_with_roas_obj(scale)
+    acos_view = replace_acos_obj_with_roas_obj(acos)
+
+    # -------------------------
+    # Matriz CPI
+    # -------------------------
     st.subheader("Matriz CPI")
-    show_df(camp_strat, use_container_width=True)
+    show_df(camp_strat_view, use_container_width=True)
 
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("Pausar ou revisar")
-        show_df(pause, use_container_width=True)
+        show_df(pause_view, use_container_width=True)
     with c2:
         st.subheader("Entrar em Ads")
-        show_df(enter, use_container_width=True)
+        show_df(enter_view, use_container_width=True)
 
     c3, c4 = st.columns(2)
     with c3:
         st.subheader("Escalar orçamento")
-        show_df(scale, use_container_width=True)
+        show_df(scale_view, use_container_width=True)
     with c4:
         st.subheader("Subir ROAS objetivo")
-        show_df(acos, use_container_width=True)
+        show_df(acos_view, use_container_width=True)
 
+    # -------------------------
+    # Download Excel
+    # Mantem os dataframes originais para nao quebrar o gerar_excel do ml_report
+    # -------------------------
     st.subheader("Download Excel")
     try:
         excel_bytes = ml.gerar_excel(
@@ -410,7 +428,7 @@ def main():
             use_container_width=True,
         )
     except Exception as e:
-        st.error("Nao consegui gerar o Excel.")
+        st.error("Não consegui gerar o Excel.")
         st.exception(e)
 
 
