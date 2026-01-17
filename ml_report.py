@@ -141,6 +141,34 @@ def add_strategy_fields(
 ) -> pd.DataFrame:
     df = camp_agg.copy()
 
+    def _reorder_action_block(d: pd.DataFrame) -> pd.DataFrame:
+        """Padroniza leitura: Acao_Recomendada antes de Confianca_Dado e Motivo.
+        Mantem o restante na ordem original.
+        """
+        if d is None or d.empty:
+            return d
+
+        block = [c for c in ["Acao_Recomendada", "Confianca_Dado", "Motivo", "Impacto_Estimado_R$"] if c in d.columns]
+        if not block:
+            return d
+
+        # Remove o bloco e reinsere no ponto ideal
+        cols = [c for c in d.columns if c not in block]
+
+        # Insere o bloco no ponto de decisao: logo apos Perdidas (diagnostico), antes de campos auxiliares
+        anchor = None
+        for a in ["Perdidas_Class", "Perdidas_Orc", "ROAS_Real", "ROAS_Objetivo"]:
+            if a in cols:
+                anchor = a
+                break
+
+        if anchor is None:
+            return d[cols + block]
+
+        idx = cols.index(anchor) + 1
+        cols = cols[:idx] + block + cols[idx:]
+        return d[cols]
+
     for c in [
         "Receita","Investimento","Vendas","Cliques","Impressões","ROAS","CVR",
         "Perdidas_Orc","Perdidas_Class","ACOS Objetivo","Orçamento"
@@ -272,6 +300,8 @@ def add_strategy_fields(
     # Se confianca baixa, registra motivo claro
     df.loc[df["Confianca_Dado"] == "BAIXA", "Motivo"] = "Baixo volume, manter coletando dado"
 
+    # Garante ordem de leitura em todas as visoes que usam camp_strat
+    df = _reorder_action_block(df)
     return df
 
 
@@ -370,17 +400,17 @@ def build_opportunity_highlights(camp_agg_strat: pd.DataFrame) -> dict:
 def build_7_day_plan(camp_agg_strat: pd.DataFrame) -> pd.DataFrame:
     df = camp_agg_strat.copy()
 
-    cols_d1 = [c for c in ["Nome","Orçamento","Perdidas_Orc","ROAS_Real","Impacto_Estimado_R$","Confianca_Dado","Motivo","Acao_Recomendada"] if c in df.columns]
+    cols_d1 = [c for c in ["Nome","Orçamento","Perdidas_Orc","ROAS_Real","Impacto_Estimado_R$","Acao_Recomendada","Confianca_Dado","Motivo"] if c in df.columns]
     d1 = df[df["Quadrante"] == "ESCALA_ORCAMENTO"][cols_d1].copy()
     d1["Dia"] = "Dia 1"
     d1["Tarefa"] = "Aumentar orcamento com controle (+20% a +40%)"
 
-    cols_d2 = [c for c in ["Nome","ROAS_Objetivo","Perdidas_Class","Receita","Confianca_Dado","Motivo","Acao_Recomendada"] if c in df.columns]
+    cols_d2 = [c for c in ["Nome","ROAS_Objetivo","Perdidas_Class","Receita","Acao_Recomendada","Confianca_Dado","Motivo"] if c in df.columns]
     d2 = df[df["Quadrante"] == "COMPETITIVIDADE"][cols_d2].copy()
     d2["Dia"] = "Dia 2"
     d2["Tarefa"] = "Baixar ROAS objetivo (abrir funil) apenas se houver elasticidade"
 
-    cols_d5 = [c for c in ["Nome","Investimento","Receita","ROAS_Real","Perdidas_Orc","Perdidas_Class","Confianca_Dado","Acao_Recomendada"] if c in df.columns]
+    cols_d5 = [c for c in ["Nome","Investimento","Receita","ROAS_Real","Perdidas_Orc","Perdidas_Class","Acao_Recomendada","Confianca_Dado"] if c in df.columns]
     d5 = df[df["Quadrante"].isin(["ESCALA_ORCAMENTO","COMPETITIVIDADE","HEMORRAGIA"])][cols_d5].copy()
     d5["Dia"] = "Dia 5"
     d5["Tarefa"] = "Monitorar investimento, ROAS e perdas"
@@ -393,7 +423,7 @@ def build_control_panel(camp_agg_strat: pd.DataFrame) -> pd.DataFrame:
     df = camp_agg_strat.copy()
     base_cols = [
         "Nome","Orçamento","ACOS Objetivo","ROAS_Objetivo","ROAS_Real",
-        "Perdidas_Orc","Perdidas_Class","Confianca_Dado","Motivo","Impacto_Estimado_R$","Acao_Recomendada"
+        "Perdidas_Orc","Perdidas_Class","Acao_Recomendada","Confianca_Dado","Motivo","Impacto_Estimado_R$"
     ]
     cols = [c for c in base_cols if c in df.columns]
     panel = df[cols].copy()
