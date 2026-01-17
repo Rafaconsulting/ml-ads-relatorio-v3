@@ -210,59 +210,6 @@ def replace_acos_obj_with_roas_obj(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # -------------------------
-# Limpeza de visualizacao (Dashboard)
-# - Esconder CPI_Share, CPI_Cum e CPI_80 em todas as tabelas
-# - Manter apenas 1 coluna de ROAS objetivo (a primeira encontrada)
-# - Posicionar ROAS_Real imediatamente ao lado do ROAS objetivo mantido
-# - Manter Acao_Recomendada antes do Motivo
-# -------------------------
-_HIDE_COLS_DASHBOARD_NORM = {"cpi_share", "cpi_cum", "cpi_80"}
-
-
-def clean_dashboard_view(df: pd.DataFrame) -> pd.DataFrame:
-    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
-        return df
-
-    d = df.copy()
-
-    # Remover colunas CPI auxiliares (somente visual)
-    drop_cols = []
-    for c in list(d.columns):
-        cn = str(c).strip().lower().replace(" ", "_")
-        if cn in _HIDE_COLS_DASHBOARD_NORM:
-            drop_cols.append(c)
-    if drop_cols:
-        d = d.drop(columns=drop_cols, errors="ignore")
-
-    # Manter apenas o primeiro ROAS objetivo (quando houver duplicidade)
-    roas_obj_candidates = [
-        c for c in d.columns if ("roas" in str(c).strip().lower() and "objetiv" in str(c).strip().lower())
-    ]
-    keep = roas_obj_candidates[0] if roas_obj_candidates else None
-    if len(roas_obj_candidates) > 1:
-        for c in roas_obj_candidates[1:]:
-            d = d.drop(columns=c, errors="ignore")
-
-    # Colar ROAS_Real ao lado do ROAS objetivo mantido
-    if keep and "ROAS_Real" in d.columns:
-        cols = list(d.columns)
-        cols.remove("ROAS_Real")
-        idx = cols.index(keep) + 1
-        cols.insert(idx, "ROAS_Real")
-        d = d[cols]
-
-    # Garantir Acao_Recomendada antes do Motivo
-    if "Acao_Recomendada" in d.columns and "Motivo" in d.columns:
-        cols = list(d.columns)
-        cols.remove("Acao_Recomendada")
-        mot_idx = cols.index("Motivo")
-        cols.insert(mot_idx, "Acao_Recomendada")
-        d = d[cols]
-
-    return d
-
-
-# -------------------------
 # Formatacao unificada (Painel, CPI, Acoes)
 # -------------------------
 def format_table_br(df: pd.DataFrame) -> pd.DataFrame:
@@ -436,8 +383,8 @@ def main():
     # -------------------------
     st.subheader("Painel geral")
     panel_raw = ml.build_control_panel(camp_strat)
-    panel_view = clean_dashboard_view(replace_acos_obj_with_roas_obj(panel_raw))
-    st.dataframe(format_table_br(panel_view), use_container_width=True)
+    panel_raw = replace_acos_obj_with_roas_obj(panel_raw)
+    st.dataframe(format_table_br(panel_raw), use_container_width=True)
 
     st.divider()
 
@@ -446,8 +393,16 @@ def main():
     # -------------------------
     st.subheader("Matriz CPI")
     cpi_raw = replace_acos_obj_with_roas_obj(camp_strat)
-    # Mantem ROAS generico na CPI? Aqui seguimos a limpeza que ja usamos no dashboard limpo
-    cpi_view = clean_dashboard_view(cpi_raw.drop(columns=["ROAS"], errors="ignore"))
+
+    # Visao limpa (sem alterar calculos): esconder colunas auxiliares e alinhar ROAS
+    cpi_view = cpi_raw.drop(columns=["ROAS", "CPI_Share", "CPI_Cum", "CPI_80"], errors="ignore")
+    if "ROAS_Objetivo" in cpi_view.columns and "ROAS_Real" in cpi_view.columns:
+        cols = list(cpi_view.columns)
+        cols.remove("ROAS_Real")
+        idx = cols.index("ROAS_Objetivo") + 1
+        cols.insert(idx, "ROAS_Real")
+        cpi_view = cpi_view[cols]
+
     st.dataframe(format_table_br(cpi_view), use_container_width=True)
 
     st.divider()
@@ -455,10 +410,10 @@ def main():
     # -------------------------
     # Restante do dashboard (com os mesmos ajustes)
     # -------------------------
-    pause_fmt = format_table_br(clean_dashboard_view(replace_acos_obj_with_roas_obj(pause)))
-    enter_fmt = format_table_br(clean_dashboard_view(replace_acos_obj_with_roas_obj(enter)))
-    scale_fmt = format_table_br(clean_dashboard_view(replace_acos_obj_with_roas_obj(scale)))
-    acos_fmt = format_table_br(clean_dashboard_view(replace_acos_obj_with_roas_obj(acos)))
+    pause_fmt = format_table_br(replace_acos_obj_with_roas_obj(pause))
+    enter_fmt = format_table_br(replace_acos_obj_with_roas_obj(enter))
+    scale_fmt = format_table_br(replace_acos_obj_with_roas_obj(scale))
+    acos_fmt = format_table_br(replace_acos_obj_with_roas_obj(acos))
 
     c1, c2 = st.columns(2)
     with c1:
