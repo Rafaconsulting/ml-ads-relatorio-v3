@@ -393,7 +393,17 @@ def main():
     # -------------------------
     st.subheader("Matriz CPI")
     cpi_raw = replace_acos_obj_with_roas_obj(camp_strat)
-    st.dataframe(format_table_br(cpi_raw), use_container_width=True)
+
+    # Visao limpa (sem alterar calculos): esconder colunas auxiliares e alinhar ROAS
+    cpi_view = cpi_raw.drop(columns=["ROAS", "CPI_Share", "CPI_Cum", "CPI_80"], errors="ignore")
+    if "ROAS_Objetivo" in cpi_view.columns and "ROAS_Real" in cpi_view.columns:
+        cols = list(cpi_view.columns)
+        cols.remove("ROAS_Real")
+        idx = cols.index("ROAS_Objetivo") + 1
+        cols.insert(idx, "ROAS_Real")
+        cpi_view = cpi_view[cols]
+
+    st.dataframe(format_table_br(cpi_view), use_container_width=True)
 
     st.divider()
 
