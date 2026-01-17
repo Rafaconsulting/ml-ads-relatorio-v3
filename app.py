@@ -210,6 +210,43 @@ def replace_acos_obj_with_roas_obj(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # -------------------------
+# Limpeza de ROAS objetivo na visualização
+# - Mantém apenas 1 coluna de ROAS objetivo (as demais são redundantes)
+# - Move ROAS_Real para ficar imediatamente ao lado do ROAS objetivo
+# -------------------------
+
+def clean_roas_objective_view(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+
+    df2 = df.copy()
+
+    # Detecta colunas de ROAS objetivo (pode vir duplicado após conversões)
+    roas_obj_cols = [
+        c
+        for c in df2.columns
+        if ("roas" in str(c).lower() and "objetivo" in str(c).lower() and "real" not in str(c).lower())
+    ]
+
+    # Mantém apenas a primeira
+    if len(roas_obj_cols) > 1:
+        for col in roas_obj_cols[1:]:
+            df2 = df2.drop(columns=col, errors="ignore")
+
+    roas_obj_col = roas_obj_cols[0] if roas_obj_cols else None
+
+    # ROAS_Real imediatamente à direita do ROAS objetivo
+    if roas_obj_col and "ROAS_Real" in df2.columns:
+        cols = list(df2.columns)
+        cols.remove("ROAS_Real")
+        idx = cols.index(roas_obj_col) + 1
+        cols.insert(idx, "ROAS_Real")
+        df2 = df2[cols]
+
+    return df2
+
+
+# -------------------------
 # Formatacao unificada (Painel, CPI, Acoes)
 # -------------------------
 def format_table_br(df: pd.DataFrame) -> pd.DataFrame:
@@ -384,6 +421,7 @@ def main():
     st.subheader("Painel geral")
     panel_raw = ml.build_control_panel(camp_strat)
     panel_raw = replace_acos_obj_with_roas_obj(panel_raw)
+    panel_raw = clean_roas_objective_view(panel_raw)
     st.dataframe(format_table_br(panel_raw), use_container_width=True)
 
     st.divider()
@@ -394,23 +432,9 @@ def main():
     st.subheader("Matriz CPI")
     cpi_raw = replace_acos_obj_with_roas_obj(camp_strat)
 
-    # Visao limpa (sem alterar calculos): esconder colunas auxiliares e alinhar ROAS
+    # Visão limpa (sem alterar cálculos): esconder colunas auxiliares e alinhar ROAS
     cpi_view = cpi_raw.drop(columns=["ROAS", "CPI_Share", "CPI_Cum", "CPI_80"], errors="ignore")
-
-    # Manter apenas 1 coluna de ROAS objetivo (as demais sao redundantes na visualizacao)
-    roas_obj_cols = [c for c in cpi_view.columns if ("roas" in str(c).lower() and "objetivo" in str(c).lower() and "real" not in str(c).lower())]
-    if len(roas_obj_cols) > 1:
-        for col in roas_obj_cols[1:]:
-            cpi_view = cpi_view.drop(columns=col, errors="ignore")
-    roas_obj_col = roas_obj_cols[0] if roas_obj_cols else None
-
-    # ROAS_Real imediatamente a direita do ROAS objetivo mantido
-    if roas_obj_col and "ROAS_Real" in cpi_view.columns:
-        cols = list(cpi_view.columns)
-        cols.remove("ROAS_Real")
-        idx = cols.index(roas_obj_col) + 1
-        cols.insert(idx, "ROAS_Real")
-        cpi_view = cpi_view[cols]
+    cpi_view = clean_roas_objective_view(cpi_view)
     st.dataframe(format_table_br(cpi_view), use_container_width=True)
 
     st.divider()
@@ -418,10 +442,14 @@ def main():
     # -------------------------
     # Restante do dashboard (com os mesmos ajustes)
     # -------------------------
-    pause_fmt = format_table_br(replace_acos_obj_with_roas_obj(pause))
-    enter_fmt = format_table_br(replace_acos_obj_with_roas_obj(enter))
-    scale_fmt = format_table_br(replace_acos_obj_with_roas_obj(scale))
-    acos_fmt = format_table_br(replace_acos_obj_with_roas_obj(acos))
+    pause_view = clean_roas_objective_view(replace_acos_obj_with_roas_obj(pause))
+    pause_fmt = format_table_br(pause_view)
+    enter_view = clean_roas_objective_view(replace_acos_obj_with_roas_obj(enter))
+    enter_fmt = format_table_br(enter_view)
+    scale_view = clean_roas_objective_view(replace_acos_obj_with_roas_obj(scale))
+    scale_fmt = format_table_br(scale_view)
+    acos_view = clean_roas_objective_view(replace_acos_obj_with_roas_obj(acos))
+    acos_fmt = format_table_br(acos_view)
 
     c1, c2 = st.columns(2)
     with c1:
