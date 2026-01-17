@@ -396,13 +396,21 @@ def main():
 
     # Visao limpa (sem alterar calculos): esconder colunas auxiliares e alinhar ROAS
     cpi_view = cpi_raw.drop(columns=["ROAS", "CPI_Share", "CPI_Cum", "CPI_80"], errors="ignore")
-    if "ROAS_Objetivo" in cpi_view.columns and "ROAS_Real" in cpi_view.columns:
+
+    # Manter apenas 1 coluna de ROAS objetivo (as demais sao redundantes na visualizacao)
+    roas_obj_cols = [c for c in cpi_view.columns if ("roas" in str(c).lower() and "objetivo" in str(c).lower() and "real" not in str(c).lower())]
+    if len(roas_obj_cols) > 1:
+        for col in roas_obj_cols[1:]:
+            cpi_view = cpi_view.drop(columns=col, errors="ignore")
+    roas_obj_col = roas_obj_cols[0] if roas_obj_cols else None
+
+    # ROAS_Real imediatamente a direita do ROAS objetivo mantido
+    if roas_obj_col and "ROAS_Real" in cpi_view.columns:
         cols = list(cpi_view.columns)
         cols.remove("ROAS_Real")
-        idx = cols.index("ROAS_Objetivo") + 1
+        idx = cols.index(roas_obj_col) + 1
         cols.insert(idx, "ROAS_Real")
         cpi_view = cpi_view[cols]
-
     st.dataframe(format_table_br(cpi_view), use_container_width=True)
 
     st.divider()
