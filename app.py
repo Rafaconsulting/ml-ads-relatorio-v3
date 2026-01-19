@@ -693,13 +693,11 @@ def main():
         st.exception(e)
 
 
-if __name__ == "__main__":
-    main()
-
+    st.divider()
+    
     # -------------------------
     # Snapshot para Comparativo
     # -------------------------
-    st.divider()
     st.header("📸 Snapshot para Comparativo")
     st.info("Baixe um snapshot do estado atual das suas campanhas. Daqui a 15 dias, suba este arquivo junto com os novos relatorios para ver a evolucao.")
     
@@ -767,3 +765,7 @@ if __name__ == "__main__":
                 st.warning("Nenhuma campanha em comum entre o snapshot e os dados atuais.")
         except Exception as e:
             st.error(f"Erro ao processar snapshot: {e}")
+
+
+if __name__ == "__main__":
+    main()
