@@ -530,40 +530,47 @@ def build_tables(
 
 
 def gerar_excel(kpis, camp_agg, pause, enter, scale, acos, camp_strat, daily=None) -> bytes:
-    diagnosis = build_executive_diagnosis(camp_strat, daily=daily)
-    highlights = build_opportunity_highlights(camp_strat)
-    plan7 = build_7_day_plan(camp_strat)
-    panel = build_control_panel(camp_strat)
-
-    resumo = pd.DataFrame([kpis])
-    diag_df = pd.DataFrame([{
-        "Investimento": diagnosis["Investimento"],
-        "Receita": diagnosis["Receita"],
-        "Vendas": diagnosis["Vendas"],
-        "ROAS": diagnosis["ROAS"],
-        "ACOS_real": diagnosis["ACOS_real"],
-        "Veredito": diagnosis["Veredito"],
-        "Trend_cpc_proxy": diagnosis["Tendencias"]["cpc_proxy_up"],
-        "Trend_ticket": diagnosis["Tendencias"]["ticket_down"],
-        "Trend_roas": diagnosis["Tendencias"]["roas_down"],
-    }])
-
+    # Se for um snapshot simplificado, gera um Excel basico
+    is_snapshot = "Data_Snapshot" in camp_strat.columns
+    
     out = BytesIO()
     with pd.ExcelWriter(out, engine="openpyxl") as writer:
-        diag_df.to_excel(writer, index=False, sheet_name="DIAGNOSTICO_EXEC")
-        resumo.to_excel(writer, index=False, sheet_name="RESUMO")
-        panel.to_excel(writer, index=False, sheet_name="PAINEL_GERAL")
-        camp_strat.to_excel(writer, index=False, sheet_name="MATRIZ_CPI")
-        highlights["Locomotivas"].to_excel(writer, index=False, sheet_name="LOCOMOTIVAS")
-        highlights["Minas"].to_excel(writer, index=False, sheet_name="MINAS_LIMITADAS")
-        plan7.to_excel(writer, index=False, sheet_name="PLANO_7_DIAS")
-        pause.to_excel(writer, index=False, sheet_name="PAUSAR_CAMPANHAS")
-        enter.to_excel(writer, index=False, sheet_name="ENTRAR_EM_ADS")
-        scale.to_excel(writer, index=False, sheet_name="ESCALAR_ORCAMENTO")
-        acos.to_excel(writer, index=False, sheet_name="BAIXAR_ROAS")
-        camp_agg.to_excel(writer, index=False, sheet_name="BASE_CAMPANHAS_AGG")
-        if daily is not None:
-            daily.to_excel(writer, index=False, sheet_name="SERIE_DIARIA")
+        if is_snapshot:
+            camp_strat.to_excel(writer, index=False, sheet_name="Campanhas Estrategicas")
+        else:
+            diagnosis = build_executive_diagnosis(camp_strat, daily=daily)
+            highlights = build_opportunity_highlights(camp_strat)
+            plan7 = build_7_day_plan(camp_strat)
+            panel = build_control_panel(camp_strat)
+
+            resumo = pd.DataFrame([kpis])
+            diag_df = pd.DataFrame([{
+                "Investimento": diagnosis["Investimento"],
+                "Receita": diagnosis["Receita"],
+                "Vendas": diagnosis["Vendas"],
+                "ROAS": diagnosis["ROAS"],
+                "ACOS_real": diagnosis["ACOS_real"],
+                "Veredito": diagnosis["Veredito"],
+                "Trend_cpc_proxy": diagnosis["Tendencias"].get("cpc_proxy_up", 0),
+                "Trend_ticket": diagnosis["Tendencias"].get("ticket_down", 0),
+                "Trend_roas": diagnosis["Tendencias"].get("roas_down", 0),
+            }])
+
+            diag_df.to_excel(writer, index=False, sheet_name="DIAGNOSTICO_EXEC")
+            resumo.to_excel(writer, index=False, sheet_name="RESUMO")
+            panel.to_excel(writer, index=False, sheet_name="PAINEL_GERAL")
+            camp_strat.to_excel(writer, index=False, sheet_name="MATRIZ_CPI")
+            highlights["Locomotivas"].to_excel(writer, index=False, sheet_name="LOCOMOTIVAS")
+            highlights["Minas"].to_excel(writer, index=False, sheet_name="MINAS_LIMITADAS")
+            plan7.to_excel(writer, index=False, sheet_name="PLANO_7_DIAS")
+            pause.to_excel(writer, index=False, sheet_name="PAUSAR_CAMPANHAS")
+            enter.to_excel(writer, index=False, sheet_name="ENTRAR_EM_ADS")
+            scale.to_excel(writer, index=False, sheet_name="ESCALAR_ORCAMENTO")
+            acos.to_excel(writer, index=False, sheet_name="BAIXAR_ROAS")
+            camp_agg.to_excel(writer, index=False, sheet_name="BASE_CAMPANHAS_AGG")
+            if daily is not None:
+                daily.to_excel(writer, index=False, sheet_name="SERIE_DIARIA")
+                
     out.seek(0)
     return out.read()
 
