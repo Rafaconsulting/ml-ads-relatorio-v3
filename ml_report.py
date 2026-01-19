@@ -566,3 +566,40 @@ def gerar_excel(kpis, camp_agg, pause, enter, scale, acos, camp_strat, daily=Non
             daily.to_excel(writer, index=False, sheet_name="SERIE_DIARIA")
     out.seek(0)
     return out.read()
+
+def compare_snapshots(df_current: pd.DataFrame, df_reference: pd.DataFrame) -> pd.DataFrame:
+    """Compara o estado atual das campanhas com um snapshot de referência."""
+    if df_current is None or df_reference is None:
+        return pd.DataFrame()
+    
+    # Garantir que temos as colunas necessárias
+    cols_ref = ["Nome", "ROAS_Real", "Investimento", "Receita", "Quadrante"]
+    df_ref_sub = df_reference[[c for c in cols_ref if c in df_reference.columns]].copy()
+    
+    # Renomear colunas de referência para evitar conflito
+    df_ref_sub = df_ref_sub.rename(columns={
+        "ROAS_Real": "ROAS_Ref",
+        "Investimento": "Invest_Ref",
+        "Receita": "Receita_Ref",
+        "Quadrante": "Quadrante_Ref"
+    })
+    
+    # Merge com os dados atuais
+    comparison = pd.merge(df_current, df_ref_sub, on="Nome", how="inner")
+    
+    # Calcular variações
+    comparison["Delta_ROAS"] = comparison["ROAS_Real"] - comparison["ROAS_Ref"]
+    comparison["Delta_Invest"] = comparison["Investimento"] - comparison["Invest_Ref"]
+    
+    # Identificar melhoria de status
+    def check_status_improvement(row):
+        q_ref = str(row.get("Quadrante_Ref", ""))
+        q_curr = str(row.get("Quadrante", ""))
+        if q_ref == q_curr: return "Mantido"
+        if q_ref == "HEMORRAGIA" and q_curr != "HEMORRAGIA": return "Recuperado"
+        if q_curr == "ESCALA_ORCAMENTO": return "Potencializado"
+        return "Alterado"
+        
+    comparison["Evolucao_Status"] = comparison.apply(check_status_improvement, axis=1)
+    
+    return comparison

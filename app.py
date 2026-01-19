@@ -486,9 +486,13 @@ def main():
         st.divider()
 
         st.subheader("Arquivos")
-        organico_file = st.file_uploader("Relatório de Desempenho de Vendas (Excel)", type=["xlsx"])
-        patrocinados_file = st.file_uploader("Relatório Anúncios Patrocinados (Excel)", type=["xlsx"])
-        campanhas_file = st.file_uploader("Relatório de Campanha (Excel)", type=["xlsx"])
+        organico_file = st.file_uploader("Relatorio de Desempenho de Vendas (Excel)", type=["xlsx"])
+        patrocinados_file = st.file_uploader("Relatorio Anuncios Patrocinados (Excel)", type=["xlsx"])
+        campanhas_file = st.file_uploader("Relatorio de Campanha (Excel)", type=["xlsx"])
+        
+        st.divider()
+        st.subheader("Comparativo (Opcional)")
+        snapshot_file = st.file_uploader("Snapshot de Referencia (Excel)", type=["xlsx"], help="Arquivo gerado ha 15 dias para comparar evolucao")
 
         st.divider()
         st.subheader("Filtros de regra")
@@ -691,3 +695,75 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    # -------------------------
+    # Snapshot para Comparativo
+    # -------------------------
+    st.divider()
+    st.header("📸 Snapshot para Comparativo")
+    st.info("Baixe um snapshot do estado atual das suas campanhas. Daqui a 15 dias, suba este arquivo junto com os novos relatorios para ver a evolucao.")
+    
+    try:
+        snapshot_data = camp_strat[["Nome", "ROAS_Real", "Investimento", "Receita", "Quadrante"]].copy()
+        snapshot_data["Data_Snapshot"] = datetime.now().strftime("%d/%m/%Y")
+        
+        snapshot_excel = ml.gerar_excel(
+            kpis=kpis,
+            camp_agg=camp_agg,
+            pause=pause,
+            enter=enter,
+            scale=scale,
+            acos=acos,
+            camp_strat=snapshot_data,
+            daily=None,
+        )
+        
+        st.download_button(
+            "Baixar Snapshot de Referencia",
+            data=snapshot_excel,
+            file_name=f"snapshot_referencia_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+    except Exception as e:
+        st.error(f"Erro ao gerar Snapshot: {e}")
+    
+    # -------------------------
+    # Se snapshot foi enviado, mostrar comparativo
+    # -------------------------
+    if snapshot_file:
+        st.divider()
+        st.header("📈 Evolucao e Resultados")
+        st.success("Snapshot de referencia detectado! Analisando evolucao das campanhas...")
+        
+        try:
+            # Ler snapshot
+            snapshot_df = pd.read_excel(snapshot_file, sheet_name="Campanhas Estrategicas")
+            
+            # Comparar
+            comparison = ml.compare_snapshots(camp_strat, snapshot_df)
+            
+            if not comparison.empty:
+                # Exibir metricas de evolucao
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Campanhas Analisadas", len(comparison))
+                with col2:
+                    recuperadas = len(comparison[comparison["Evolucao_Status"] == "Recuperado"])
+                    st.metric("Recuperadas", recuperadas, delta=f"+{recuperadas}")
+                with col3:
+                    potencializadas = len(comparison[comparison["Evolucao_Status"] == "Potencializado"])
+                    st.metric("Potencializadas", potencializadas, delta=f"+{potencializadas}")
+                with col4:
+                    delta_roas_medio = comparison["Delta_ROAS"].mean()
+                    st.metric("Delta ROAS Medio", f"{delta_roas_medio:.2f}x", delta=f"{delta_roas_medio:+.2f}x")
+                
+                st.divider()
+                st.subheader("Tabela de Evolucao")
+                cols_view = ["Nome", "ROAS_Ref", "ROAS_Real", "Delta_ROAS", "Invest_Ref", "Investimento", "Delta_Invest", "Quadrante_Ref", "Quadrante", "Evolucao_Status"]
+                comparison_view = comparison[[c for c in cols_view if c in comparison.columns]].copy()
+                st.dataframe(format_table_br(comparison_view), use_container_width=True)
+            else:
+                st.warning("Nenhuma campanha em comum entre o snapshot e os dados atuais.")
+        except Exception as e:
+            st.error(f"Erro ao processar snapshot: {e}")
