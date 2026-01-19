@@ -1,0 +1,127 @@
+/* Custom CSS para o dashboard - Melhorado para melhor legibilidade */
+
+/* Cores inspiradas no Mercado Livre */
+:root {
+    --meli-yellow: #ffe600;
+    --meli-blue: #3483fa;
+    --meli-dark: #333333;
+}
+
+/* Título principal */
+h1 {
+    color: #ffffff;
+    border-bottom: 3px solid var(--meli-yellow);
+    padding-bottom: 10px;
+}
+
+/* Subtítulos */
+h2, h3 {
+    color: #ffffff;
+}
+
+/* Sidebar */
+.stSidebar {
+    background-color: #1e1e1e;
+}
+
+/* Botão principal */
+.stButton > button {
+    background-color: var(--meli-yellow) !important;
+    color: var(--meli-dark) !important;
+    font-weight: bold;
+    border: none;
+    border-radius: 5px;
+    padding: 10px 20px;
+    transition: all 0.3s ease;
+}
+
+.stButton > button:hover {
+    background-color: #ffcc00 !important;
+    color: var(--meli-dark) !important;
+    box-shadow: 0 4px 8px rgba(255, 230, 0, 0.3);
+}
+
+/* Métricas (KPIs) - Cartões com melhor contraste */
+[data-testid="stMetric"] {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+    border: 2px solid var(--meli-yellow);
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+[data-testid="stMetric"] > div:first-child {
+    color: #ffffff !important;
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+[data-testid="stMetric"] > div:nth-child(2) {
+    color: var(--meli-yellow) !important;
+    font-weight: bold;
+    font-size: 1.8rem;
+}
+
+[data-testid="stMetric"] > div:nth-child(3) {
+    color: #b0b0b0 !important;
+    font-size: 0.85rem;
+}
+
+/* Expander (para as tabelas) */
+.streamlit-expanderHeader {
+    font-size: 1.1em;
+    font-weight: bold;
+    color: #ffffff;
+    background-color: rgba(52, 131, 250, 0.1);
+    padding: 12px;
+    border-radius: 5px;
+    border-left: 4px solid var(--meli-blue);
+}
+
+/* Divisor */
+hr {
+    border-color: var(--meli-yellow);
+    opacity: 0.5;
+}
+
+/* Tabelas */
+[data-testid="stDataFrame"] {
+    background-color: #1e1e1e;
+    border: 1px solid #404040;
+    border-radius: 5px;
+}
+
+/* Texto em geral */
+body, p, span, label {
+    color: #ffffff !important;
+}
+
+/* Inputs e campos de texto */
+.stTextInput > div > div > input,
+.stNumberInput > div > div > input,
+.stSelectbox > div > div > select {
+    background-color: #2d2d2d !important;
+    color: #ffffff !important;
+    border: 1px solid #404040 !important;
+}
+
+/* Mensagens de sucesso */
+.stSuccess {
+    background-color: rgba(34, 197, 94, 0.1) !important;
+    color: #86efac !important;
+    border: 1px solid #22c55e !important;
+}
+
+/* Mensagens de erro */
+.stError {
+    background-color: rgba(239, 68, 68, 0.1) !important;
+    color: #fca5a5 !important;
+    border: 1px solid #ef4444 !important;
+}
+
+/* Mensagens de info */
+.stInfo {
+    background-color: rgba(59, 130, 246, 0.1) !important;
+    color: #93c5fd !important;
+    border: 1px solid #3b82f6 !important;
+}

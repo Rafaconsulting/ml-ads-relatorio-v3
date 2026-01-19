@@ -397,26 +397,55 @@ def build_opportunity_highlights(camp_agg_strat: pd.DataFrame) -> dict:
     return {"Locomotivas": locomotivas, "Minas": minas}
 
 
-def build_7_day_plan(camp_agg_strat: pd.DataFrame) -> pd.DataFrame:
+def build_15_day_plan(camp_agg_strat: pd.DataFrame) -> pd.DataFrame:
+    """Gera um plano de 15 dias respeitando a janela de 7 dias do algoritmo."""
     df = camp_agg_strat.copy()
 
-    cols_d1 = [c for c in ["Nome","Orçamento","Perdidas_Orc","ROAS_Real","Impacto_Estimado_R$","Acao_Recomendada","Confianca_Dado","Motivo"] if c in df.columns]
-    d1 = df[df["Quadrante"] == "ESCALA_ORCAMENTO"][cols_d1].copy()
-    d1["Dia"] = "Dia 1"
-    d1["Tarefa"] = "Aumentar orcamento com controle (+20% a +40%)"
+    # --- SEMANA 1: AJUSTES ---
+    cols_base = ["Nome", "Acao_Recomendada", "Confianca_Dado"]
+    
+    # Dia 1: Escala e Hemorragia (Urgente)
+    d1 = df[df["Quadrante"].isin(["ESCALA_ORCAMENTO", "HEMORRAGIA"])].copy()
+    d1["Dia"] = "Dia 01"
+    d1["Fase"] = "Semana 1: Ajustes"
+    d1["Tarefa"] = d1["Quadrante"].map({
+        "ESCALA_ORCAMENTO": "Aumentar orçamento (+20%)",
+        "HEMORRAGIA": "Pausar ou reduzir ROAS objetivo drasticamente"
+    })
 
-    cols_d2 = [c for c in ["Nome","ROAS_Objetivo","Perdidas_Class","Receita","Acao_Recomendada","Confianca_Dado","Motivo"] if c in df.columns]
-    d2 = df[df["Quadrante"] == "COMPETITIVIDADE"][cols_d2].copy()
-    d2["Dia"] = "Dia 2"
-    d2["Tarefa"] = "Baixar ROAS objetivo (abrir funil) apenas se houver elasticidade"
+    # Dia 3: Competitividade
+    d3 = df[df["Quadrante"] == "COMPETITIVIDADE"].copy()
+    d3["Dia"] = "Dia 03"
+    d3["Fase"] = "Semana 1: Ajustes"
+    d3["Tarefa"] = "Reduzir ROAS objetivo em 1 ou 2 pontos"
 
-    cols_d5 = [c for c in ["Nome","Investimento","Receita","ROAS_Real","Perdidas_Orc","Perdidas_Class","Acao_Recomendada","Confianca_Dado"] if c in df.columns]
-    d5 = df[df["Quadrante"].isin(["ESCALA_ORCAMENTO","COMPETITIVIDADE","HEMORRAGIA"])][cols_d5].copy()
-    d5["Dia"] = "Dia 5"
-    d5["Tarefa"] = "Monitorar investimento, ROAS e perdas"
+    # --- SEMANA 2: APRENDIZADO (TRAVA) ---
+    # Dia 8: Monitoramento das alterações da Semana 1
+    d8 = pd.concat([d1, d3], ignore_index=True)
+    d8["Dia"] = "Dia 08"
+    d8["Fase"] = "Semana 2: Aprendizado"
+    d8["Tarefa"] = "APRENDIZADO: Não alterar. Apenas monitorar ROAS e CPC."
 
-    plan = pd.concat([d1, d2, d5], ignore_index=True, sort=False)
-    return plan.sort_values(["Dia"], ascending=True)
+    # Dia 15: Reavaliação Final
+    d15 = d8[d8["Dia"] == "Dia 08"].copy()
+    d15["Dia"] = "Dia 15"
+    d15["Fase"] = "Semana 2: Aprendizado"
+    d15["Tarefa"] = "Fim do ciclo. Se ROAS estabilizou, planejar novo ajuste."
+
+    cols_final = ["Dia", "Fase", "Nome", "Tarefa", "Acao_Recomendada", "Confianca_Dado"]
+    plan = pd.concat([d1, d3, d8, d15], ignore_index=True, sort=False)
+    
+    # Garantir que as colunas existam
+    for c in cols_final:
+        if c not in plan.columns:
+            plan[c] = ""
+            
+    return plan[cols_final].sort_values(["Dia", "Nome"], ascending=True)
+
+
+def build_7_day_plan(camp_agg_strat: pd.DataFrame) -> pd.DataFrame:
+    # Mantido por compatibilidade, mas o dashboard usará o de 15 dias
+    return build_15_day_plan(camp_agg_strat)
 
 
 def build_control_panel(camp_agg_strat: pd.DataFrame) -> pd.DataFrame:
