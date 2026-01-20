@@ -1,38 +1,124 @@
 import pandas as pd
 from io import BytesIO
 
-EMOJI_GREEN = "\U0001F7E2"   # green circle
-EMOJI_YELLOW = "\U0001F7E1"  # yellow circle
-EMOJI_BLUE = "\U0001F535"    # blue circle
-EMOJI_RED = "\U0001F534"     # red circle
+EMOJI_GREEN = '🟢'   # green circle
+EMOJI_YELLOW = '🟡'  # yellow circle
+EMOJI_BLUE = '🔵'    # blue circle
+EMOJI_RED = '🔴'     # red circle
+
+
+
+def _to_number_ptbr(val):
+    # Converte strings pt-BR (1.234,56 | 52,00% | R$ 1.234,56) para float
+    if val is None:
+        return None
+    try:
+        # pandas NA
+        if val is pd.NA:
+            return None
+    except Exception:
+        pass
+
+    if isinstance(val, (int, float)):
+        return float(val)
+
+    s = str(val).strip()
+    if s == '' or s.lower() in {'nan', 'none', '<na>'}:
+        return None
+
+    # remove moeda e espacos
+    s = s.replace('R$', '').replace(' ', ' ').strip()
+    # remove separador de milhar
+    s = s.replace('.', '')
+
+    # lida com porcentagem (mantem em "pontos". Ex: 52,00% -> 52.0)
+    if s.endswith('%'):
+        s = s[:-1].strip()
+
+    # decimal pt-BR
+    s = s.replace(',', '.')
+
+    # mantem apenas digitos, sinal e ponto
+    cleaned = []
+    for ch in s:
+        if ch.isdigit() or ch in {'.', '-', '+'}:
+            cleaned.append(ch)
+    s = ''.join(cleaned)
+
+    try:
+        return float(s)
+    except Exception:
+        return None
+
+
+def _coerce_series_numeric_ptbr(series: pd.Series) -> pd.Series:
+    if series is None:
+        return series
+    return series.apply(_to_number_ptbr)
+
 
 
 def load_organico(organico_file) -> pd.DataFrame:
-    org = pd.read_excel(organico_file, header=4)
-    org.columns = [
-        "ID","Titulo","Status","Variacao","SKU",
-        "Visitas","Qtd_Vendas","Compradores",
-        "Unidades","Vendas_Brutas","Participacao",
-        "Conv_Visitas_Vendas","Conv_Visitas_Compradores"
-    ]
-    org = org[org["ID"] != "ID do anúncio"].copy()
+    # Relatorio de desempenho de publicacoes (Excel exportado do Mercado Livre)
+    # Problema recorrente: a coluna "Vendas brutas" pode vir como numero (float)
+    # quando o Excel/pandas interpreta "3.144" como 3.144, mas no padrao pt-BR isso
+    # significa 3.144,00 (tres mil cento e quarenta e quatro).
+    # Para evitar isso, lemos como texto e convertemos com parser pt-BR.
+
+    # Descobre automaticamente a linha de cabecalho (onde aparece "ID do anúncio")
+    preview = pd.read_excel(organico_file, sheet_name="Relatório", header=None, nrows=40)
+    header_row = None
+    for i in range(len(preview)):
+        row = preview.iloc[i].astype(str)
+        if row.str.contains(r"\bID do anúncio\b", case=False, na=False).any():
+            header_row = i
+            break
+    if header_row is None:
+        # fallback historico
+        header_row = 4
+
+    org = pd.read_excel(organico_file, sheet_name="Relatório", header=header_row, dtype=str)
+
+    # Normaliza nomes esperados
+    rename_map = {
+        "ID do anúncio": "ID",
+        "Anúncio": "Titulo",
+        "Status atual": "Status",
+        "Variação": "Variacao",
+        "SKU": "SKU",
+        "Visitas únicas": "Visitas",
+        "Quantidade de vendas": "Qtd_Vendas",
+        "Compradores únicos": "Compradores",
+        "Unidades vendidas": "Unidades",
+        "Vendas brutas (BRL)": "Vendas_Brutas",
+        "% de participação": "Participacao",
+        "Conversão de visitas em vendas": "Conv_Visitas_Vendas",
+        "Conversão de visitas em compradores": "Conv_Visitas_Compradores",
+    }
+    org = org.rename(columns={k: v for k, v in rename_map.items() if k in org.columns})
+
+    # remove linhas repetidas de cabecalho, se existirem
+    if "ID" in org.columns:
+        org = org[org["ID"].astype(str).str.strip().str.lower() != "id do anúncio"].copy()
 
     for c in ["Visitas","Qtd_Vendas","Compradores","Unidades","Vendas_Brutas",
               "Participacao","Conv_Visitas_Vendas","Conv_Visitas_Compradores"]:
-        org[c] = pd.to_numeric(org[c], errors="coerce")
+        if c in org.columns:
+            org[c] = _coerce_series_numeric_ptbr(org[c])
 
-    org["ID"] = org["ID"].astype(str).str.replace("MLB", "", regex=False)
+    if "ID" in org.columns:
+        org["ID"] = org["ID"].astype(str).str.replace("MLB", "", regex=False).str.replace(r"\.0$", "", regex=True)
     return org
 
 
 def load_patrocinados(patrocinados_file) -> pd.DataFrame:
     pat = pd.read_excel(patrocinados_file, sheet_name="Relatório Anúncios patrocinados", header=1)
-    pat["ID"] = pat["Código do anúncio"].astype(str).str.replace("MLB", "", regex=False)
+    pat["ID"] = pat["Código do anúncio"].astype(str).str.replace("MLB", "", regex=False).str.replace(r"\.0$", "", regex=True)
 
     for c in ["Impressões","Cliques","Receita\n(Moeda local)","Investimento\n(Moeda local)",
               "Vendas por publicidade\n(Diretas + Indiretas)"]:
         if c in pat.columns:
-            pat[c] = pd.to_numeric(pat[c], errors="coerce")
+            pat[c] = _coerce_series_numeric_ptbr(pat[c])
     return pat
 
 
@@ -45,7 +131,7 @@ def _coerce_campaign_numeric(df: pd.DataFrame) -> pd.DataFrame:
     ]
     for c in cols_num:
         if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
+            df[c] = _coerce_series_numeric_ptbr(df[c])
     return df
 
 
@@ -174,7 +260,7 @@ def add_strategy_fields(
         "Perdidas_Orc","Perdidas_Class","ACOS Objetivo","Orçamento"
     ]:
         if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
+            df[c] = _coerce_series_numeric_ptbr(df[c])
 
     df["ROAS_Real"] = df.apply(lambda r: _safe_div(r.get("Receita", 0), r.get("Investimento", 0)), axis=1)
     df["ACOS_Real"] = df.apply(lambda r: _safe_div(r.get("Investimento", 0), r.get("Receita", 0)), axis=1)
